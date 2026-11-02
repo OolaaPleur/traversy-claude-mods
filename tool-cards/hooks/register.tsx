@@ -370,6 +370,20 @@ function outputDetail(tool: string, output: unknown): ToolDetail | null {
   return null
 }
 
+// Fork patch: put the Bash command itself at the top of Details,
+// so it is visible like in the stock row (also when there is no output).
+function toolDetail(tool: string, input: unknown, output: unknown): ToolDetail | null {
+  const detail = outputDetail(tool, output)
+  const command = tool === 'Bash' && isRecord(input) ? asString(input.command) : undefined
+  if (!command) return detail
+
+  const header = `$ ${truncate(command.trim(), MAX_DETAIL_CHARS)}`
+  // Empty stdout/stderr would fall through to the raw JSON dump: show only the command.
+  const noStreams = isRecord(output) && !asString(output.stdout) && !asString(output.stderr)
+  if (!detail || noStreams || detail.format !== 'source') return { source: header, format: 'source' }
+  return { source: `${header}\n\n${detail.source}`, format: 'source' }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, event, next) => {
     stopClockTicker()
@@ -428,13 +442,20 @@ export const register: Register = on => {
     })
   })
 
+  // Fork patch: hide the buddy's status-line reaction calls entirely.
+  // An empty Box, not null: null is not a tree, so the engine drew its own row.
+  const BUDDY_REACT = 'mcp__claude-buddy__buddy_react'
   on('ui.render', { component: 'ToolUse' }, ($, event) => {
+    if (event.props.tool === BUDDY_REACT) {
+      const { Box } = $.ui.resolve(event)
+      return <Box />
+    }
     const { Box, Button, Code, Text } = $.ui.resolve(event)
     const state = status(event.props.isRunning, event.props.isErrored, event.props.isInterrupted)
     const color = statusColor(state)
     const summary = resultSummary(event.props.tool, event.props.output, state)
     const duration = timingLabel(event.props.tool_use_id, event.props.output)
-    const detail = outputDetail(event.props.tool, event.props.output)
+    const detail = toolDetail(event.props.tool, event.props.input, event.props.output)
     const expanded = expansionOverrides.get(event.props.tool_use_id) ?? event.props.isErrored
     const toggleDetails = (): void => {
       expansionOverrides.set(event.props.tool_use_id, !expanded)

@@ -399,3 +399,28 @@ test('uses one padded full-width header row in VS Code', async $ => {
   expect(await ui.find({ type: 'Code' })).toBeDefined()
   await ui.unmount()
 })
+
+test('shows the Bash command at the top of Details, also without output', async $ => {
+  const cases = [
+    { id: 'cmd-with-output', output: { stdout: 'hello\n', stderr: '', interrupted: false }, expected: '$ echo hello\n\nhello' },
+    { id: 'cmd-no-output', output: { stdout: '', stderr: '', interrupted: false, noOutputExpected: true }, expected: '$ echo hello' },
+  ]
+  for (const { id, output, expected } of cases) {
+    const ui = await $.ui.mount({
+      plugin: 'tool-cards', surface: 'terminal', component: 'ToolUse', requestId: id,
+      props: { ...PROPS, tool_use_id: id, tool: 'Bash', input: { command: 'echo hello' }, output },
+    })
+    await ui.press({ key: `tool-card-details:${id}` })
+    expect((await ui.find({ type: 'Code' }))?.props.source).toBe(expected)
+    await ui.unmount()
+  }
+})
+
+test('hides claude-buddy reaction calls', async $ => {
+  const ui = await $.ui.mount({
+    plugin: 'tool-cards', surface: 'terminal', component: 'ToolUse', requestId: 'buddy',
+    props: { ...PROPS, tool_use_id: 'buddy', tool: 'mcp__claude-buddy__buddy_react', input: { comment: 'hi' } },
+  })
+  expect(await ui.findAll({ type: 'Text' })).toHaveLength(0)
+  await ui.unmount()
+})
